@@ -79,7 +79,10 @@ git clone https://github.com/wxtsky/CodeIsland.git
 cd CodeIsland
 
 # 开发模式（debug 构建 + 启动）
-swift build && open .build/debug/CodeIsland.app
+swift run CodeIsland
+
+# 或直接运行已构建的 debug 可执行文件
+swift build && ./.build/debug/CodeIsland
 
 # 发布模式（通用二进制：Apple Silicon + Intel）
 ./build.sh
