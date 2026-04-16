@@ -103,20 +103,20 @@ parse_args() {
   done
 }
 
-quit_app_gracefully() {
+quit_app() {
   local existing_pids
   existing_pids="$(pgrep -x "CodeIsland" || true)"
   [[ -z "$existing_pids" ]] && return 0
 
-  log "Force restarting: sending KILL to existing CodeIsland process(es)"
+  log "Stopping existing CodeIsland process(es): $existing_pids"
   local pid
   for pid in $existing_pids; do
-    kill -KILL "$pid" >/dev/null 2>&1 || true
+    kill -TERM "$pid" >/dev/null 2>&1 || true
   done
 
   local deadline all_gone
-  deadline=$((SECONDS + 3))
-  while true; do
+  deadline=$((SECONDS + 2))
+  while ((SECONDS < deadline)); do
     all_gone=1
     for pid in $existing_pids; do
       if kill -0 "$pid" >/dev/null 2>&1; then
@@ -124,13 +124,29 @@ quit_app_gracefully() {
         break
       fi
     done
-
     ((all_gone == 1)) && return 0
-    if ((SECONDS >= deadline)); then
-      fail "Existing CodeIsland process(es) still alive after force kill; aborting restart"
-    fi
     sleep 0.1
   done
+
+  log "SIGTERM did not stop app within 2s; escalating to SIGKILL"
+  for pid in $existing_pids; do
+    kill -KILL "$pid" >/dev/null 2>&1 || true
+  done
+
+  deadline=$((SECONDS + 2))
+  while ((SECONDS < deadline)); do
+    all_gone=1
+    for pid in $existing_pids; do
+      if kill -0 "$pid" >/dev/null 2>&1; then
+        all_gone=0
+        break
+      fi
+    done
+    ((all_gone == 1)) && return 0
+    sleep 0.1
+  done
+
+  fail "Existing CodeIsland process(es) still alive after SIGKILL; aborting restart"
 }
 
 launch_app() {
@@ -211,7 +227,9 @@ main() {
   require_command swift
   require_command pgrep
 
-  APP_PATH="$REPO_ROOT/${APP_PATH#./}"
+  if [[ "$APP_PATH" != /* ]]; then
+    APP_PATH="$REPO_ROOT/${APP_PATH#./}"
+  fi
   [[ -x "$APP_PATH" ]] || fail "App executable not found: $APP_PATH (run swift build first)"
 
   collect_watch_args
@@ -230,7 +248,7 @@ main() {
   WATCHER_PID=$!
 
   local seen latest_before_build latest_after_build
-  seen=0
+  seen=$(wc -c <"$EVENT_FILE")
 
   while true; do
     latest_before_build=$(wc -c <"$EVENT_FILE")
@@ -244,7 +262,7 @@ main() {
 
     if run_build_pipeline; then
       log "Build succeeded"
-      quit_app_gracefully
+      quit_app
       launch_app
       log "Restart complete"
     else
