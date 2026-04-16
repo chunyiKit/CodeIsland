@@ -60,10 +60,12 @@ xcrun actool \
     "$REPO_ROOT/Assets.xcassets" \
     "$REPO_ROOT/AppIcon.icon"
 
-# Copy SPM resource bundles at .app root where Bundle.module expects them
+# Copy SPM resource bundles into Contents/Resources/ — putting them at the .app
+# root breaks Developer ID signing with "unsealed contents present in the bundle
+# root". Bundle.module already checks resourceURL, so this layout loads fine.
 for bundle in "$BUILD_DIR"/*/release/*.bundle; do
     if [ -e "$bundle" ]; then
-        cp -R "$bundle" "$APP_DIR/"
+        cp -R "$bundle" "$CONTENTS_DIR/Resources/"
         break
     fi
 done
@@ -71,23 +73,22 @@ done
 echo "==> App bundle assembled at $APP_DIR"
 
 # ---------------------------------------------------------------------------
-# Code signing requires an Apple Developer account ($99/year).
-# Without Developer ID signing + notarization, macOS Gatekeeper will block
-# apps downloaded from the internet ("damaged" / "unidentified developer").
-#
-# Workaround for users: run  xattr -cr /Applications/CodeIsland.app
-# Or install via Homebrew:  brew install wxtsky/tap/codeisland
-#
-# To enable signing, uncomment below and set your credentials:
+# Developer ID signing. Skippable via SKIP_SIGN=1 for local dev builds.
+# Override the identity with SIGN_IDENTITY=... if you have a different cert.
 # ---------------------------------------------------------------------------
-# TEAM_ID="YOUR_TEAM_ID"
-# SIGNING_IDENTITY="Developer ID Application: Your Name (${TEAM_ID})"
-#
-# codesign --deep --force --options runtime \
-#     --entitlements "$REPO_ROOT/CodeIsland.entitlements" \
-#     --sign "$SIGNING_IDENTITY" \
-#     "$APP_DIR"
-# ---------------------------------------------------------------------------
+SIGN_IDENTITY="${SIGN_IDENTITY:-Developer ID Application: xuteng wang (K46MBL36P8)}"
+if [ "${SKIP_SIGN:-0}" = "1" ]; then
+    echo "==> SKIP_SIGN=1 — leaving adhoc signature"
+elif security find-identity -v -p codesigning | grep -q "$(printf '%s' "$SIGN_IDENTITY" | sed 's/[][\\.^$*/]/\\&/g')"; then
+    echo "==> Signing with '$SIGN_IDENTITY'"
+    codesign --deep --force --options runtime \
+        --entitlements "$REPO_ROOT/CodeIsland.entitlements" \
+        --sign "$SIGN_IDENTITY" \
+        "$APP_DIR"
+else
+    echo "==> Developer ID identity '$SIGN_IDENTITY' not in keychain — leaving adhoc signature"
+    echo "    (install your Developer ID cert or set SIGN_IDENTITY=...)"
+fi
 
 echo "==> Creating DMG"
 
@@ -102,23 +103,31 @@ create-dmg \
     --icon "CodeIsland.app" 175 190 \
     --hide-extension "CodeIsland.app" \
     --app-drop-link 425 190 \
+    --no-internet-enable \
     "$OUTPUT_DMG" \
     "$STAGING_DIR/"
 
 # ---------------------------------------------------------------------------
-# Notarization (uncomment after Developer ID signing)
+# Notarize + staple. Uses the "CodeIsland" keychain profile by default
+# (xcrun notarytool store-credentials CodeIsland ...). Skippable via
+# SKIP_NOTARIZE=1 for local dev builds. Override with NOTARY_PROFILE=....
 # ---------------------------------------------------------------------------
-# BUNDLE_ID="com.codeisland.app"
-# APPLE_ID="your@apple.id"
-# APP_PASSWORD="xxxx-xxxx-xxxx-xxxx"  # app-specific password
-#
-# xcrun notarytool submit "$OUTPUT_DMG" \
-#     --apple-id "$APPLE_ID" \
-#     --password "$APP_PASSWORD" \
-#     --team-id "$TEAM_ID" \
-#     --wait
-#
-# xcrun stapler staple "$OUTPUT_DMG"
-# ---------------------------------------------------------------------------
+NOTARY_PROFILE="${NOTARY_PROFILE:-CodeIsland}"
+if [ "${SKIP_NOTARIZE:-0}" = "1" ]; then
+    echo "==> SKIP_NOTARIZE=1 — release DMG is not notarized"
+elif [ "${SKIP_SIGN:-0}" = "1" ]; then
+    echo "==> Skipping notarization (app was not Developer-ID signed)"
+else
+    echo "==> Submitting to Apple notary service (profile '$NOTARY_PROFILE')"
+    if xcrun notarytool submit "$OUTPUT_DMG" \
+        --keychain-profile "$NOTARY_PROFILE" \
+        --wait; then
+        xcrun stapler staple "$OUTPUT_DMG"
+    else
+        echo "==> Notarization failed — inspect the log above and, if missing, run:"
+        echo "    xcrun notarytool store-credentials $NOTARY_PROFILE --apple-id <id> --team-id <team> --password <app-specific>"
+        exit 1
+    fi
+fi
 
 echo "==> Done: $OUTPUT_DMG"
