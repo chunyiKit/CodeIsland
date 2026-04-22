@@ -81,6 +81,8 @@ enum SettingsKey {
     // Island collapsed width scale for non-notch screens (percentage: 50–150, default 100)
     static let collapsedWidthScale = "collapsedWidthScale"
 
+    // Default mascot source when no sessions exist (falls back to this instead of always "claude")
+    static let defaultSource = "defaultSource"
 }
 
 struct SettingsDefaults {
@@ -124,6 +126,8 @@ struct SettingsDefaults {
     static let showToolStatus = true
 
     static let collapsedWidthScale = 100  // percentage
+
+    static let defaultSource = "claude"
 }
 
 @MainActor
@@ -166,6 +170,7 @@ class SettingsManager {
             SettingsKey.sessionGroupingMode: SettingsDefaults.sessionGroupingMode,
             SettingsKey.showToolStatus: SettingsDefaults.showToolStatus,
             SettingsKey.collapsedWidthScale: SettingsDefaults.collapsedWidthScale,
+            SettingsKey.defaultSource: SettingsDefaults.defaultSource,
         ])
     }
 
@@ -272,6 +277,11 @@ class SettingsManager {
     var sessionGroupingMode: String {
         get { defaults.string(forKey: SettingsKey.sessionGroupingMode) ?? SettingsDefaults.sessionGroupingMode }
         set { defaults.set(newValue, forKey: SettingsKey.sessionGroupingMode) }
+    }
+
+    var defaultSource: String {
+        get { defaults.string(forKey: SettingsKey.defaultSource) ?? SettingsDefaults.defaultSource }
+        set { defaults.set(newValue, forKey: SettingsKey.defaultSource) }
     }
 }
 

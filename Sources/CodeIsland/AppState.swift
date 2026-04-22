@@ -754,9 +754,17 @@ final class AppState {
     /// Call after any mutation to `sessions` or session status.
     private func refreshDerivedState() {
         let summary = deriveSessionSummary(from: sessions)
+        // When there are no sessions at all, honor the user-configured default mascot source
+        // instead of the built-in "claude" fallback (#102).
+        let effectiveSource: String
+        if summary.totalSessionCount == 0 {
+            effectiveSource = SettingsManager.shared.defaultSource
+        } else {
+            effectiveSource = summary.primarySource
+        }
         // Only assign when changed (avoids unnecessary @Observable notifications)
         if status != summary.status { status = summary.status }
-        if primarySource != summary.primarySource { primarySource = summary.primarySource }
+        if primarySource != effectiveSource { primarySource = effectiveSource }
         if activeSessionCount != summary.activeSessionCount { activeSessionCount = summary.activeSessionCount }
         if totalSessionCount != summary.totalSessionCount { totalSessionCount = summary.totalSessionCount }
     }

@@ -314,13 +314,20 @@ private struct CompactLeftWing: View {
     let hasNotch: Bool
     let showToolStatus: Bool
     @AppStorage(SettingsKey.sessionGroupingMode) private var groupingMode = SettingsDefaults.sessionGroupingMode
+    // Bound via @AppStorage so flipping the default mascot in Settings rerenders this view
+    // even when AppState.primarySource wasn't recomputed (no session mutations in flight).
+    @AppStorage(SettingsKey.defaultSource) private var settingsDefaultSource = SettingsDefaults.defaultSource
 
     private var displaySession: SessionSnapshot? {
         let sid = appState.rotatingSessionId ?? appState.activeSessionId ?? appState.sessions.keys.sorted().first
         guard let sid else { return nil }
         return appState.sessions[sid]
     }
-    private var displaySource: String { displaySession?.source ?? appState.primarySource }
+    private var displaySource: String {
+        if let s = displaySession?.source { return s }
+        if appState.totalSessionCount == 0 { return settingsDefaultSource }
+        return appState.primarySource
+    }
     private var displayStatus: AgentStatus { displaySession?.status ?? .idle }
     private var liveTool: String? { displaySession?.currentTool }
     @State private var shownTool: String?
