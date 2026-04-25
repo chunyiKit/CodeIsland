@@ -336,18 +336,6 @@ class SettingsManager {
     }
 }
 
-// MARK: - AppStorage-compatible Set<String>
-
-extension Set<String>: @retroactive RawRepresentable {
-    public var rawValue: String {
-        sorted().joined(separator: ",")
-    }
-
-    public init?(rawValue: String) {
-        self = Set(rawValue.split(separator: ",").map(String.init))
-    }
-}
-
 // MARK: - Shortcut Actions
 
 struct ShortcutBinding {

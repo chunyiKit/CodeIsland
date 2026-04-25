@@ -348,7 +348,18 @@ private struct BehaviorPage: View {
     @AppStorage(SettingsKey.sessionTimeout) private var sessionTimeout = SettingsDefaults.sessionTimeout
     @AppStorage(SettingsKey.rotationInterval) private var rotationInterval = SettingsDefaults.rotationInterval
     @AppStorage(SettingsKey.maxToolHistory) private var maxToolHistory = SettingsDefaults.maxToolHistory
-    @AppStorage(SettingsKey.autoApproveTools) private var autoApproveSet: Set<String> = .init(rawValue: SettingsDefaults.autoApproveTools) ?? []
+    @AppStorage(SettingsKey.autoApproveTools) private var autoApproveRaw: String = SettingsDefaults.autoApproveTools
+
+    private func autoApproveBinding(for name: String) -> Binding<Bool> {
+        Binding(
+            get: { autoApproveRaw.split(separator: ",").contains(Substring(name)) },
+            set: { isOn in
+                var set = Set(autoApproveRaw.split(separator: ",").map(String.init))
+                if isOn { set.insert(name) } else { set.remove(name) }
+                autoApproveRaw = set.sorted().joined(separator: ",")
+            }
+        )
+    }
 
     var body: some View {
         Form {
@@ -407,16 +418,7 @@ private struct BehaviorPage: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 ForEach(SettingsManager.allAutoApproveTools, id: \.name) { tool in
-                    Toggle(isOn: Binding(
-                        get: { autoApproveSet.contains(tool.name) },
-                        set: { isOn in
-                            if isOn {
-                                autoApproveSet.insert(tool.name)
-                            } else {
-                                autoApproveSet.remove(tool.name)
-                            }
-                        }
-                    )) {
+                    Toggle(isOn: autoApproveBinding(for: tool.name)) {
                         VStack(alignment: .leading, spacing: 1) {
                             Text(tool.name)
                                 .font(.system(size: 12, design: .monospaced))
