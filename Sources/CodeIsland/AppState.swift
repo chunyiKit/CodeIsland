@@ -766,7 +766,8 @@ final class AppState {
 
     var toolDescription: String? {
         if let pending = pendingPermission {
-            return pending.event.toolDescription
+            let sessionId = pending.event.sessionId ?? activeSessionId ?? "default"
+            return pending.event.toolDescription ?? sessions[sessionId]?.toolDescription
         }
         if let q = pendingQuestion {
             return q.question.question
@@ -848,12 +849,17 @@ final class AppState {
             sessions[sessionId] = SessionSnapshot()
         }
 
+        let normalizedEventName = EventNormalizer.normalize(event.eventName)
         let prevStatus = sessions[sessionId]?.status
         let wasWaiting = prevStatus == .waitingApproval || prevStatus == .waitingQuestion
 
         // Cache PreToolUse payloads so downstream events sharing tool_use_id can be
         // correlated, and drain queue entries whose agent already moved on.
         let permissionCountBefore = permissionQueue.lazy.filter { $0.event.sessionId == sessionId }.count
+        let keepQueuedPermissionForCompletion = shouldKeepQueuedPermissionForCompletedEvent(
+            event,
+            normalizedEventName: normalizedEventName
+        )
         cachePreToolUseIfApplicable(event)
         resolveToolUseIfCompleted(event)
         let permissionCountAfter = permissionQueue.lazy.filter { $0.event.sessionId == sessionId }.count
@@ -876,16 +882,16 @@ final class AppState {
         // sweep so concurrent in-flight tools stay queued (tested by
         // testPostToolUseDoesNotAffectUnrelatedQueueEntries).
         if wasWaiting {
-            let en = EventNormalizer.normalize(event.eventName)
             // Events that should NOT clear waiting state
             let keepWaiting: Set<String> = ["Notification", "SessionStart", "SessionEnd", "PreCompact"]
-            let skipBlanketDrain = surgicallyDrained && permissionCountAfter > 0
-            if !keepWaiting.contains(en) && !skipBlanketDrain {
+            let skipBlanketDrain = (surgicallyDrained && permissionCountAfter > 0)
+                || keepQueuedPermissionForCompletion
+            if !keepWaiting.contains(normalizedEventName) && !skipBlanketDrain {
                 drainPermissions(forSession: sessionId)
                 drainQuestions(forSession: sessionId)
                 if sessions[sessionId]?.status == .waitingApproval
                     || sessions[sessionId]?.status == .waitingQuestion {
-                    sessions[sessionId]?.status = (en == "Stop") ? .idle : .processing
+                    sessions[sessionId]?.status = (normalizedEventName == "Stop") ? .idle : .processing
                     sessions[sessionId]?.currentTool = nil
                     sessions[sessionId]?.toolDescription = nil
                 }
@@ -918,8 +924,7 @@ final class AppState {
         // Handle the "else if activeSessionId == sessionId → mostActive" edge case
         // (reducer can't check activeSessionId since it's AppState-local)
         if sessions[sessionId]?.status == .idle && activeSessionId == sessionId {
-            let eventName = EventNormalizer.normalize(event.eventName)
-            if eventName != "Stop" {
+            if normalizedEventName != "Stop" {
                 activeSessionId = mostActiveSessionId()
             }
         }
@@ -1049,6 +1054,29 @@ final class AppState {
 
         showNextPending()
         refreshDerivedState()
+    }
+
+    func handleBuddyControlCommand(_ command: BuddyControlCommand) {
+        switch command {
+        case .approveCurrentPermission:
+            if !permissionQueue.isEmpty {
+                approvePermission()
+            } else {
+                log.info("Ignored Buddy approve command because permission queue is empty")
+            }
+        case .denyCurrentPermission:
+            if !permissionQueue.isEmpty {
+                denyPermission()
+            } else {
+                log.info("Ignored Buddy deny command because permission queue is empty")
+            }
+        case .skipCurrentQuestion:
+            if !questionQueue.isEmpty {
+                skipQuestion()
+            } else {
+                log.info("Ignored Buddy skip command because question queue is empty")
+            }
+        }
     }
 
     func denyPermission() {

@@ -51,6 +51,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             guard let appState else { return }
             ESP32FocusCoordinator.handle(mascot: mascot, appState: appState)
         }
+        ESP32BridgeManager.shared.onControlCommand = { [weak appState] command in
+            guard let appState else { return }
+            appState.handleBuddyControlCommand(command)
+        }
         let buddyEnabled = UserDefaults.standard.bool(forKey: SettingsKey.esp32BridgeEnabled)
         let buddySyncInterval = UserDefaults.standard.double(forKey: SettingsKey.esp32HeartbeatSeconds)
         let buddyBrightness = UserDefaults.standard.double(forKey: SettingsKey.buddyScreenBrightnessPercent)

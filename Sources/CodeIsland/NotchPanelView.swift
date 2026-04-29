@@ -693,14 +693,14 @@ private struct ApprovalToolDetailView: View {
                             Text(cmd)
                                 .font(.system(size: 10, design: .monospaced))
                                 .foregroundStyle(.white.opacity(0.85))
-                                .lineLimit(maxLines ?? 3)
+                                .lineLimit(maxLines)
                         }
                     }
                     if let desc = toolInput?["description"] as? String, !desc.isEmpty {
                         Text(desc)
                             .font(.system(size: 9.5, design: .monospaced))
                             .foregroundStyle(.white.opacity(0.55))
-                            .lineLimit(maxLines ?? 2)
+                            .lineLimit(maxLines)
                     }
                 }
 
