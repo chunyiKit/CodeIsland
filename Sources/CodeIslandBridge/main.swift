@@ -376,6 +376,13 @@ let effectiveSource = sourceTag ?? CLIProcessResolver.inferSource(ancestry: core
 if let source = effectiveSource {
     json["_source"] = source
 }
+// Mark events that arrived via a plugin proxy (no explicit --source but
+// ancestry inferred a real source — e.g. the omo OpenCode plugin firing
+// Claude hooks) so the host app can route them per pluginSessionMode.
+// See issue #123.
+if sourceTag == nil && effectiveSource != nil {
+    json["_via_plugin"] = true
+}
 
 let resolvedTrackedPID = CLIProcessResolver.resolvedTrackedPID(
     immediateParentPID: Int32(immediateParentPID),
