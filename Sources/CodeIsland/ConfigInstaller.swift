@@ -804,10 +804,19 @@ struct ConfigInstaller {
 
     // MARK: - CLI Version Detection
 
-    /// Detect installed Claude Code version by running `claude --version`
+    /// Detect installed Claude Code version by running `claude --version`.
+    /// Cache is guarded by a lock because `install()` and `verifyAndRepair()`
+    /// can both call this from `Task.detached` since #139 (#103 review).
     private static var cachedClaudeVersion: String?
+    private static let cachedClaudeVersionLock = NSLock()
     private static func detectClaudeVersion() -> String? {
-        if let cached = cachedClaudeVersion { return cached }
+        cachedClaudeVersionLock.lock()
+        if let cached = cachedClaudeVersion {
+            cachedClaudeVersionLock.unlock()
+            return cached
+        }
+        cachedClaudeVersionLock.unlock()
+
         // Find claude binary — GUI apps don't inherit user's shell PATH
         let candidates = [
             NSHomeDirectory() + "/.local/bin/claude",
@@ -825,7 +834,9 @@ struct ConfigInstaller {
         let version = output.trimmingCharacters(in: .whitespacesAndNewlines)
             .components(separatedBy: " ").first ?? ""
         guard !version.isEmpty else { return nil }
+        cachedClaudeVersionLock.lock()
         cachedClaudeVersion = version
+        cachedClaudeVersionLock.unlock()
         return version
     }
 
